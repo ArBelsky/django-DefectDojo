@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feature/ci-cd-pipeline
   pull_request:
     branches:
       - main
@@ -29,3 +28,73 @@ jobs:
       - name: Run unit tests
         run: |
           python manage.py test
+
+      - name: Run Bandit (SAST)
+        run: |
+          pip install bandit
+          bandit -r . -f json -o bandit_results.json
+
+      - name: Run Hadolint (Dockerfile check)
+        run: |
+          docker run --rm -i hadolint/hadolint < Dockerfile
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v3
+        with:
+          name: bandit-report
+          path: bandit_results.json
+
+      - name: Run OWASP ZAP (DAST)
+        run: |
+          docker run -v $(pwd):/zap/wrk -t owasp/zap2docker-stable zap-baseline.py \
+            -t http://your-test-server-url -r zap_report.html
+
+      - name: Upload OWASP ZAP report
+        uses: actions/upload-artifact@v3
+        with:
+          name: zap-report
+          path: zap_report.html
+
+      - name: Run TruffleHog (Secrets check)
+        run: |
+          docker run --rm -v $(pwd):/code trufflesecurity/trufflehog:latest git file:///code --json
+
+      - name: Run Checkov (Infrastructure check)
+        run: |
+          pip install checkov
+          checkov -d .
+
+      - name: Fail pipeline if vulnerabilities found
+        if: ${{ failure() }}
+        run: |
+          echo "Critical vulnerabilities found. Pipeline stopped."
+          exit 1
+
+      - name: Comment on PR
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "Critical vulnerabilities found. Please fix them before merging."
+            })
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /path/to/project
+            git pull origin main
+            docker-compose up --build -d
