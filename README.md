@@ -37,8 +37,12 @@
    git clone https://github.com/ваш-username/defectdojo-ci-cd.git
    cd defectdojo-ci-cd
 2. Настройте секреты в GitHub:
+
    VPS_HOST: IP-адрес вашего сервера.
+
    VPS_USERNAME: Имя пользователя для доступа к серверу.
+
    VPS_SSH_KEY: Приватный SSH-ключ.
+
 3. Запустите пайплайн:
    Сделайте изменения в коде и отправьте их в ветку.
